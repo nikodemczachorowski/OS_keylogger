@@ -1,0 +1,90 @@
+\documentclass{article}
+\usepackage{graphicx, float}
+\usepackage{subfig}
+\usepackage{slashbox}
+\usepackage{polski}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\usepackage[margin=2.5cm]{geometry}
+
+\lstset{
+    language=C,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue}\bfseries,
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    frame=single,
+    breaklines=true,
+    captionpos=b,
+    tabsize=4,
+    showstringspaces=false
+}
+
+\graphicspath{img}
+
+\title{Oprogramowanie Systemowe - Keylogger}
+\author{Nikodem Czachorowski 197907}
+
+\begin{document}
+    \maketitle
+
+    \section{Wstęp}
+        Celem projektu było zaimplementowanie keyloggera działającego w systemie Windows, jako sterownik urządzenia klawiatury. 
+        Do implementacji został użyty framework KMDF.
+
+    \section{Środowisko Programistyczne}
+        Sterownik był pisany w Visual Studio, które ułatwia wiele czynności związanych z wdrażaniem i testowaniem.
+        Wszystkie niezbędne pliki były automatycznie kopiowane na maszynę testową.
+        
+        Do testów posłużyła maszyna wirtualna z zainstalowanym systemem Windows 11. 
+        Na maszynie testowej konieczne było zainstalowanie WDK, uruchomienie w niej trybu debugowania. 
+        Aby komunikaty wypisywane za pomocą funkcji DbgPrint() były wyświetlane w debugerze, konieczne było rówież dodanie klucza o nazwie DEFAULT w rejestrze \verb|HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Debug Print Filter| o wartości 0xFFFFFFFF.
+
+        
+        Debugowanie odbywało się za pomocą WinDbg podłączonego do maszyny wirtualnej przez sieć. 
+        Proces łączenia maszyny testowej z debugerem został znacząco ułatwiony przez Visual Studio, które po podaniu nazwy maszyny testowej i adresu ip samo skończyło konfigurację połączenia.
+
+    \section{Architektura}
+        Mój keylogger składa się z dwóch częsci - sterownika działającego w trybie jadra oraz aplikacji działającej w trybie urzytkownika.
+
+        Zadaniem stereownika było zbieranie wciśnietych klawiszy oraz przesyłanie ich do aplikacji trybu urzytkownika.
+        Przy starcie systemu tworzył dwa urządzenia. Sterownik ma kontekst, do którego sostęp mają oba urządzenia. Ma on następującą struktórę:
+        \begin{lstlisting}[caption = {Struktura kontekstu sterownika}]
+            typedef struct _DRIVER_CONTEXT {
+                KEY_EVENT_DATA buffer[BUFFER_SIZE];
+                ULONG Head;
+                ULONG Tail;
+                WDFSPINLOCK BufferLock;
+
+                WDFQUEUE AppQueue;
+            } DRIVER_CONTEXT, * PDRIVER_CONTEXT;
+        \end{lstlisting}
+        Pierwsze z urządzeń działało jako górny filtr klawiatury.
+        Po starcie sterownik nasłuchuje sygnałów przechodzących przez stos sterowników klawiatury.
+        W momencie przechwycenia komunikatu \verb|IOCTL_INTERNAL_KEYBOARD_CONNECT|, sterownik wpisuje do niego swój callback i od tego momentu wszystkie wciśnięte klawisze będą przechodzić przez podany callback.
+        Funkcja callback czyta wciśnięte klawisze i wpisuje je do bufora. Dane zapisywane w buforze mają następujący format:
+        \begin{lstlisting}[caption = {Struktura przechowująca pojedynczy klawisz}]
+            typedef struct _KEY_EVENT_DATA {
+                unsigned short MakeCode;
+                unsigned short Flags; 
+            } KEY_EVENT_DATA, * PKEY_EVENT_DATA;
+        \end{lstlisting}
+        Drugim urządzeniem w sterowniku jest urządzenie kontrolne, które zajmuje sie komunikacją z aplikacja urzytkowika.
+        Jedynym zadaniem tego urządzenia jest reagowanie na nowe komunikaty od aplikacji i odpowiadanie na nie klawiszami z bufora jesli są dostępne.
+
+        Aplikacja w trybie urzytkownika zajmuje się zmianą scancodeów otzrymanych od sterownika na tekst i zapisywanie ich w pliku.
+        Komunikacja odbywa się przez plik \verb|\\.\OS_keyloggerLink|. Aplikacja wrzuca do niego swoje rządanie i czeka na odpowiedź.
+        Po uzyskaniu odpowiedzi scancode oraz flaga są zapisywane do pliku, następnie ją zamieniane za Znak, który reprezentują i wpisywane do drugiego pliku.
+        Zamiana ze scancode na znak następuje przy pomocy lookup table, która jako indeksu urzywa scancodeu, a wartością jest struktóra zawierająca znak zwykły oraz znak po wciśnięciu shifta.
+
+    \section{Zarządzanie zasobami}
+    \section{Debuggowanie i analiza}
+    \section{Testy i rezulataty}
+    \section{Problemy napotkane w trakcie realizacji}
+    \section{Podsumowanie i wnioski}
+\end{document}
