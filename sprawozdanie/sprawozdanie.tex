@@ -54,7 +54,7 @@
 
         Zadaniem stereownika było zbieranie wciśnietych klawiszy oraz przesyłanie ich do aplikacji trybu urzytkownika.
         Przy starcie systemu tworzył dwa urządzenia. Sterownik ma kontekst, do którego sostęp mają oba urządzenia. Ma on następującą struktórę:
-        \begin{lstlisting}[caption = {Struktura kontekstu sterownika}]
+        \begin{lstlisting}[caption = {Struktura kontekstu sterownika}, label={lst:driver_context}]
             typedef struct _DRIVER_CONTEXT {
                 KEY_EVENT_DATA buffer[BUFFER_SIZE];
                 ULONG Head;
@@ -68,7 +68,7 @@
         Po starcie sterownik nasłuchuje sygnałów przechodzących przez stos sterowników klawiatury.
         W momencie przechwycenia komunikatu \verb|IOCTL_INTERNAL_KEYBOARD_CONNECT|, sterownik wpisuje do niego swój callback i od tego momentu wszystkie wciśnięte klawisze będą przechodzić przez podany callback.
         Funkcja callback czyta wciśnięte klawisze i wpisuje je do bufora. Dane zapisywane w buforze mają następujący format:
-        \begin{lstlisting}[caption = {Struktura przechowująca pojedynczy klawisz}]
+        \begin{lstlisting}[caption = {Struktura przechowująca pojedynczy klawisz}, label={lst:key_event_data}]
             typedef struct _KEY_EVENT_DATA {
                 unsigned short MakeCode;
                 unsigned short Flags; 
@@ -83,8 +83,33 @@
         Zamiana ze scancode na znak następuje przy pomocy lookup table, która jako indeksu urzywa scancodeu, a wartością jest struktóra zawierająca znak zwykły oraz znak po wciśnięciu shifta.
 
     \section{Zarządzanie zasobami}
+        W KMDF sterowniki mają strukturę hierarchiczną.
+        Głównym obiektem w moim sterowniku jest WDFDRIVER, który jest rodzicem dla obu tworzonych obiektów WDFDEVICE - filtru klawiatury i urządzenia kontrolnego.
+        Aby miec dostęp do zmiennych z różnych funkcji sterownika należy dodać je do kontekstu.
+        Praktycznie wszystkie obiekty w KMDF mogą mieć swój własny kontekst do którego mogą zapisywać potrzebne im dane. 
+        W moim sterowniku konteksty posiadają WDFDRIVER \ref{lst:driver_context} oraz WDFDEVICE reprezentujący filtr klawiatury, który zapisuje w nim gdzie przesłać dalej klawisze, gdy już skończy je przetważać.
+        Dzięki temu, że bufor na klawisze znajduje się w kontekście sterownika, oba urządzenia mogą uzyskać dostęp do tej pamięci.
+        Jako, że dwa urządzenia działające niezalerznie od siebie mają dostęp do tych samych danych trzeba było wpraowadzić sposób zarządzaniem dostępu do nich.
+        System windows nie pozwala usypiać wątków, które działają jako przerwania, więc nie można było wykożystać klasycznego semafora.
+        Zamiast tego, trzeba było skorzystać ze spinlocka, który zamiast usypiać wątek wprowadza go w stan aktywnego oczekiwania, co oznacza, że wątek w pętli pyta o dostęp do zasobu, aż go nie dostanie.
+
     \section{Debuggowanie i analiza}
     \section{Testy i rezulataty}
     \section{Problemy napotkane w trakcie realizacji}
+        \subsection{Dopisywanie się do UpperFilers klawiatury}
+            Aby wpisać swój callback do stosu klawiatury trzeba odebrać rządanie \verb|IOCTL_INTERNAL_KEYBOARD_CONNECT| i dopisać swoją funkcję.
+            Aby to rządanie w ogóle trafiło do sterownika, mósi on być wpisany nad kbdclass w UpperFilers w \verb|HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e96b-e325-11ce-bfc1-08002be10318}|.
+            Jeśli sterownik będzie pod kbdclass, oczekiwane rządanie nigdy do niego nie dotrze.
+            Problem leży w tym, że w pliku .inf podczas edytowania rejestrów nie można wybrać na której pozycji wpisać dodawaną wartość.
+            Jedynymi opcjami są 0x00010000 \verb|(FLG_ADDREG_TYPE_MULTI_SZ)|, zastępująca obecną wartość rejestru, oraz 0x00000008 \verb|(FLG_ADDREG_APPEND)|, dopisująca na koniec obecnaj wartości.
+
+            Moje rozwiązanie tego problemu jest bardziej obejściem niż rzeczywistym rozwiązaniem.
+            Na początku chciałem najpierw usunąć wpis kbdclass z UpperFilters, dopisać na koniec mój sterownik, a następnie dopisać z powrotem kbdclass.
+            Takie podejście okazało się niemożliwe, ponieważ plik .inf z takim rozwiązaniem nie przechodził validacji.
+            Ostatecznie zdecydowałem się zastępować całą obecną wartość moim sterownikiem na początku i kbdclass na końcu.
+            Nie jest to rozwiązanie dobre, ponieważ jeśli w wartości były jeszcze inne wpisy, zostaną one usunięte.
+        
+        \subsection{Przekazywanie klawiszy między sterownikiem, a aplikacja urzytkownika}
+            
     \section{Podsumowanie i wnioski}
 \end{document}
