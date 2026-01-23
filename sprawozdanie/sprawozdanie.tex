@@ -96,7 +96,7 @@
     \section{Debuggowanie i analiza}
     \section{Testy i rezulataty}
     \section{Problemy napotkane w trakcie realizacji}
-        \subsection{Dopisywanie się do UpperFilers klawiatury}
+        \subsection{Dopisywanie się do UpperFilers klawiatury} \label{sec:UpperFilters_regedit}
             Aby wpisać swój callback do stosu klawiatury trzeba odebrać rządanie \verb|IOCTL_INTERNAL_KEYBOARD_CONNECT| i dopisać swoją funkcję.
             Aby to rządanie w ogóle trafiło do sterownika, mósi on być wpisany nad kbdclass w UpperFilers w \verb|HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e96b-e325-11ce-bfc1-08002be10318}|.
             Jeśli sterownik będzie pod kbdclass, oczekiwane rządanie nigdy do niego nie dotrze.
@@ -110,6 +110,25 @@
             Nie jest to rozwiązanie dobre, ponieważ jeśli w wartości były jeszcze inne wpisy, zostaną one usunięte.
         
         \subsection{Przekazywanie klawiszy między sterownikiem, a aplikacja urzytkownika}
-            
+            W celu przekazywania informacji między sterownikiem, a  aplikacją trybu urzytkownika trzeba stworzyć dowiązanie symboliczne.
+            Działa to jak plik, do którego informacje mogą zapisywać zarówno aplikacja, jak i sterownik.
+            Problem polegał na tym, że system windows nie pozwolił aplikacji urzytkownika na otworzenie dowiązania symbolicznego stworzonego przez filtr klawiatury.
+            Wywołanie funkcji CreateFile kończyło się błędem 0x5 \verb|ERROR_ACCESS_DENIED|.
+
+            Any naprawić ten błąd dodałem do sterownika nowe urządzenie.
+            Jego jedynym zadaniem było odbieranie rządań od aplikacji urzytkownika i odpowiadanie na nie klawiszami z bufora.
+
+        \subsection{Dodanie aplikacji trybu urzytkownika do autostartu}
+            Z powodu tego, że zapis do pliku ma miejsce w aplikacji urzytkownika, trzeba ją uruchomić aby sterownik był funkcjonalny poza debugerem.
+            Chciałem dodać aplikację urzytkownika do autostartu dodając wpis w rejestrze za pomocą pliku .inf.
+            Aby to zrobić musiałbym dodać ścierzkę do pliku wykonywalnego aplikacji do rejestru \verb|HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run|.
+
+            Problemem ponownie okazała się validacja pliku .inf. Plik ten z założenia powinien instalować tylko sterownik. 
+            Z tego powodu nie pozwala na edycję niektórych rejestrów.
+            Ostatecznie nie udało mi się rozwiązać tego problemu.
+            Jeśli chcę aby aplikacja uruchamiała się przy starcie systemu muszę ręcznie dodać wpis do rejestru.
+            Najlepszym wyjście z tej sytuacji najprawdopodobniej byłby osobny skrypt instalacyjny.
+            Takie podejście rozwiazało by również problem \ref{sec:UpperFilters_regedit}.
+
     \section{Podsumowanie i wnioski}
 \end{document}
