@@ -1,0 +1,49 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:147.0) Gecko/20100101 Firefox/147.0" version="29.3.4">
+  <diagram name="Strona-1" id="sWMS172rQsgnvNyZ7zgp">
+    <mxGraphModel dx="1106" dy="747" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="pm2LG4mFeAOD9UIePJbS-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="Hardware(Klawiatura)" vertex="1">
+          <mxGeometry height="60" width="120" x="170" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="pm2LG4mFeAOD9UIePJbS-2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="kbdclass.sys" vertex="1">
+          <mxGeometry height="60" width="120" x="170" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="pm2LG4mFeAOD9UIePJbS-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="OS_keylogger" vertex="1">
+          <mxGeometry height="60" width="120" x="170" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="pm2LG4mFeAOD9UIePJbS-4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="Tryb użytkownika" vertex="1">
+          <mxGeometry height="60" width="120" x="170" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="pm2LG4mFeAOD9UIePJbS-5" edge="1" parent="1" source="pm2LG4mFeAOD9UIePJbS-3" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="pm2LG4mFeAOD9UIePJbS-4" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="330" y="420" as="sourcePoint" />
+            <mxPoint x="380" y="370" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="pm2LG4mFeAOD9UIePJbS-6" edge="1" parent="1" source="pm2LG4mFeAOD9UIePJbS-2" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="pm2LG4mFeAOD9UIePJbS-3" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="330" y="420" as="sourcePoint" />
+            <mxPoint x="380" y="370" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="pm2LG4mFeAOD9UIePJbS-7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="sterownik portu klawiatury" vertex="1">
+          <mxGeometry height="60" width="120" x="170" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="pm2LG4mFeAOD9UIePJbS-8" edge="1" parent="1" source="pm2LG4mFeAOD9UIePJbS-7" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="pm2LG4mFeAOD9UIePJbS-2" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="330" y="420" as="sourcePoint" />
+            <mxPoint x="380" y="370" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="pm2LG4mFeAOD9UIePJbS-9" edge="1" parent="1" source="pm2LG4mFeAOD9UIePJbS-1" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="pm2LG4mFeAOD9UIePJbS-7" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="330" y="420" as="sourcePoint" />
+            <mxPoint x="380" y="370" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
