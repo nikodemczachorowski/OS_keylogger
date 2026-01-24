@@ -2,4 +2,5 @@
 .vs/*
 *.vcxproj.user
 sprawozdanie/*
+!sprawozdanie/img/
 !sprawozdanie/*.tex

@@ -1,10 +1,12 @@
 \documentclass{article}
 \usepackage{graphicx, float}
-\usepackage{subfig}
+%\usepackage{subfig}
+\usepackage{subcaption}
 \usepackage{slashbox}
 \usepackage{polski}
 \usepackage{hyperref}
 \usepackage{listings}
+\usepackage{lstautogobble}
 \usepackage{xcolor}
 
 \usepackage[margin=2.5cm]{geometry}
@@ -21,6 +23,7 @@
     frame=single,
     breaklines=true,
     captionpos=b,
+    autogobble=true,
     tabsize=4,
     showstringspaces=false
 }
@@ -50,10 +53,27 @@
         Proces łączenia maszyny testowej z debugerem został znacząco ułatwiony przez Visual Studio, które po podaniu nazwy maszyny testowej i adresu ip samo skończyło konfigurację połączenia.
 
     \section{Architektura}
-        Mój keylogger składa się z dwóch częsci - sterownika działającego w trybie jadra oraz aplikacji działającej w trybie urzytkownika.
+        Mój keylogger składa się z dwóch częsci - sterownika działającego w trybie jadra oraz aplikacji działającej w trybie użytkownika.
+        Przepływ danych przedstawia rysunek \ref{fig:data_flow}.
 
-        Zadaniem stereownika było zbieranie wciśnietych klawiszy oraz przesyłanie ich do aplikacji trybu urzytkownika.
-        Przy starcie systemu tworzył dwa urządzenia. Sterownik ma kontekst, do którego sostęp mają oba urządzenia. Ma on następującą struktórę:
+        \begin{figure}[H]
+            \begin{subfigure}[c]{0.15\textwidth}
+                \centering
+                \includegraphics[width = \linewidth]{img/keyboard_stack_short.png}
+                \caption{Stos sterowników klawiatury}
+                \label{fig:kbd_drivers_stack}
+            \end{subfigure}
+            \hfill
+            \begin{subfigure}[c]{0.80\textwidth}
+                \centering
+                \includegraphics[width=\linewidth]{img/OS_data_flow.png}
+                \caption{Przepływ informacji w programie}
+                \label{fig:data_flow}
+            \end{subfigure}
+        \end{figure}
+
+        Zadaniem sterownika jest zbieranie wciśnietych klawiszy oraz przesyłanie ich do aplikacji trybu użytkownika.
+        Przy starcie systemu tworzy dwa urządzenia. Sterownik ma kontekst, do którego sostęp mają oba urządzenia. Ma on następującą strukturę:
         \begin{lstlisting}[caption = {Struktura kontekstu sterownika}, label={lst:driver_context}]
             typedef struct _DRIVER_CONTEXT {
                 KEY_EVENT_DATA buffer[BUFFER_SIZE];
@@ -64,44 +84,122 @@
                 WDFQUEUE AppQueue;
             } DRIVER_CONTEXT, * PDRIVER_CONTEXT;
         \end{lstlisting}
-        Pierwsze z urządzeń działało jako górny filtr klawiatury.
+
+        Pierwsze z urządzeń działa jako górny filtr klawiatury \ref{fig:kbd_drivers_stack}.
         Po starcie sterownik nasłuchuje sygnałów przechodzących przez stos sterowników klawiatury.
         W momencie przechwycenia komunikatu \verb|IOCTL_INTERNAL_KEYBOARD_CONNECT|, sterownik wpisuje do niego swój callback i od tego momentu wszystkie wciśnięte klawisze będą przechodzić przez podany callback.
-        Funkcja callback czyta wciśnięte klawisze i wpisuje je do bufora. Dane zapisywane w buforze mają następujący format:
+        Funkcja callback czyta wciśnięte klawisze i wpisuje je do bufora zawierającego struktury przedstawionej w listingu \ref{lst:key_event_data}. 
+        Jeśli w buforze nie ma miejsca nowe dane są tracone. Przetwarzanie danych przedstawia listing \ref{lst:process_key}.
+
+        \begin{lstlisting} [caption = {Logika wpisywania klawiszy do bufora}, label = {lst:process_key}]
+            WdfSpinLockAcquire(driverContext->BufferLock);
+            ULONG nextTail = (driverContext->Tail + 1) % BUFFER_SIZE
+            if (nextTail != driverContext->Head) {
+                driverContext->buffer[nextTail].MakeCode = currentPacket->MakeCode;
+                driverContext->buffer[nextTail].Flags = currentPacket->Flags;
+                
+                driverContext->Tail = nextTail;
+            }
+            else{
+                DbgPrint("OS_keylogger: buffer overflow\n");
+            }
+
+            WdfSpinLockRelease(driverContext->BufferLock);
+        \end{lstlisting}
+
         \begin{lstlisting}[caption = {Struktura przechowująca pojedynczy klawisz}, label={lst:key_event_data}]
             typedef struct _KEY_EVENT_DATA {
                 unsigned short MakeCode;
                 unsigned short Flags; 
             } KEY_EVENT_DATA, * PKEY_EVENT_DATA;
         \end{lstlisting}
-        Drugim urządzeniem w sterowniku jest urządzenie kontrolne, które zajmuje sie komunikacją z aplikacja urzytkowika.
+        
+        Drugim urządzeniem w sterowniku jest urządzenie kontrolne, które zajmuje sie komunikacją z aplikacja użytkowika.
         Jedynym zadaniem tego urządzenia jest reagowanie na nowe komunikaty od aplikacji i odpowiadanie na nie klawiszami z bufora jesli są dostępne.
+        Logikę przesyłania klawiszy do aplikacji przedstawia listing \ref{lst:app_comunication_logic}. 
+        W celu zwiększenia czytelności obsługa błędów została pominięta.
 
-        Aplikacja w trybie urzytkownika zajmuje się zmianą scancodeów otzrymanych od sterownika na tekst i zapisywanie ich w pliku.
-        Komunikacja odbywa się przez plik \verb|\\.\OS_keyloggerLink|. Aplikacja wrzuca do niego swoje rządanie i czeka na odpowiedź.
+        \begin{lstlisting}[caption = {Logika przesyłania klawiszy do aplikacji}, label = {lst:app_comunication_logic}]
+            status = WdfIoQueueRetrieveNextRequest(context->AppQueue, &request);
+
+            status = WdfRequestRetrieveOutputBuffer(request, sizeof(KEY_EVENT_DATA), (PVOID*)&buffer, &length);
+            
+            WdfSpinLockAcquire(context->BufferLock);
+
+            if (context->Head != context->Tail) {
+                *buffer = context->buffer[context->Head];
+
+                context->Head = (context->Head + 1) % BUFFER_SIZE;
+
+                WdfSpinLockRelease(context->BufferLock);
+                WdfRequestCompleteWithInformation(request, STATUS_SUCCESS, sizeof(KEY_EVENT_DATA));
+                DbgPrint("Os_keylogger: request completed\n");
+            }
+        \end{lstlisting}
+
+        Aplikacja w trybie użytkownika zajmuje się zmianą scancodeów otzrymanych od sterownika na tekst i zapisywanie ich w pliku.
+        Komunikacja odbywa się przez plik \verb|\\.\OS_keyloggerLink|. Aplikacja wrzuca do niego swoje żądanie i czeka na odpowiedź.
+        Komunikację przedstawia listing \ref{lst:usr_request_send}.
         Po uzyskaniu odpowiedzi scancode oraz flaga są zapisywane do pliku, następnie ją zamieniane za Znak, który reprezentują i wpisywane do drugiego pliku.
-        Zamiana ze scancode na znak następuje przy pomocy lookup table, która jako indeksu urzywa scancodeu, a wartością jest struktóra zawierająca znak zwykły oraz znak po wciśnięciu shifta.
+        Zamiana ze scancode na znak następuje przy pomocy lookup table, która jako indeksu używa scancodeu, a wartością jest struktura zawierająca znak zwykły oraz znak po wciśnięciu shifta.
+
+        \begin{lstlisting}[caption={Logika wysyłania żądań przez aplikację użytkownika}, label = {lst:usr_request_send}]
+            hDevice = CreateFile(L"\\\\.\\OS_keyloggerLink", GENERIC_READ , FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+
+	        while (1) {
+		        status = DeviceIoControl(hDevice, IOCTL_WAIT_FOR_KEY, NULL, 0, &buffer, sizeof(KEY_EVENT_DATA), &bytesReturned, NULL);
+		
+		        if (status) {
+			        \\przetwarzanie klawisza
+		        }
+	        }
+        \end{lstlisting}
 
     \section{Zarządzanie zasobami}
         W KMDF sterowniki mają strukturę hierarchiczną.
         Głównym obiektem w moim sterowniku jest WDFDRIVER, który jest rodzicem dla obu tworzonych obiektów WDFDEVICE - filtru klawiatury i urządzenia kontrolnego.
+        
         Aby miec dostęp do zmiennych z różnych funkcji sterownika należy dodać je do kontekstu.
         Praktycznie wszystkie obiekty w KMDF mogą mieć swój własny kontekst do którego mogą zapisywać potrzebne im dane. 
-        W moim sterowniku konteksty posiadają WDFDRIVER \ref{lst:driver_context} oraz WDFDEVICE reprezentujący filtr klawiatury, który zapisuje w nim gdzie przesłać dalej klawisze, gdy już skończy je przetważać.
+        W moim sterowniku konteksty posiadają WDFDRIVER \ref{lst:driver_context} oraz WDFDEVICE reprezentujący filtr klawiatury, który zapisuje w nim gdzie przesłać dalej klawisze, gdy już skończy je przetwarzać.
         Dzięki temu, że bufor na klawisze znajduje się w kontekście sterownika, oba urządzenia mogą uzyskać dostęp do tej pamięci.
-        Jako, że dwa urządzenia działające niezalerznie od siebie mają dostęp do tych samych danych trzeba było wpraowadzić sposób zarządzaniem dostępu do nich.
-        System windows nie pozwala usypiać wątków, które działają jako przerwania, więc nie można było wykożystać klasycznego semafora.
+        
+        Jako, że dwa urządzenia działające niezależnie od siebie mają dostęp do tych samych danych trzeba było wpraowadzić sposób zarządzaniem dostępu do nich.
+        System windows nie pozwala usypiać wątków, które działają jako przerwania, więc nie można było wykorzystać klasycznego semafora.
         Zamiast tego, trzeba było skorzystać ze spinlocka, który zamiast usypiać wątek wprowadza go w stan aktywnego oczekiwania, co oznacza, że wątek w pętli pyta o dostęp do zasobu, aż go nie dostanie.
+        Wykożystanie tego mechanizmu widać w listingach \ref{lst:process_key} i \ref{lst:app_comunication_logic}
 
-    \section{Debuggowanie i analiza}
-    \section{Testy i rezulataty}
+    \section{Instalacja i użytkowanie}
+        W celu instalacji trzeba wykonać następujące czynności:
+        \begin{itemize}
+            \item Przenieść wszystkie istotne pliki (OS\_keylogger.sys, OS\_keylogger.inf, OS\_keylogger.cat, OS\_keyloggerUserMode.exe) na komputer na którym chcemy dokonać instalacji.
+                Wszystkie wyżej wymienione pliki powinny znajdować się w jednym folderze.
+            \item Kliknąć prawym przyciskiem myszy na OS\_keylogger.inf i wybrać opcję Zainstaluj.
+            \item Opcjonalnie doadać OS\_keyloggerUserMode.exe do autostartu. \ref{sec:autostart_problem}
+            \item Uruchomić ponownie komputer.
+        \end{itemize}
+
+        Po udanej instalacji wszystkie wciśnięte klawisze będą zapisywane w dwóch plikach na pulpicie.
+        W pliku OS\_keylogger.txt zapisywane są w kolejnych liniach pary scancode flaga.
+        W pliku OS\_keyloggerText.txt zapisywany będzie wpisywany tekst, który aplikacja wyznaczyła na podstawie scancodeu.
+
     \section{Problemy napotkane w trakcie realizacji}
         \subsection{Dopisywanie się do UpperFilers klawiatury} \label{sec:UpperFilters_regedit}
-            Aby wpisać swój callback do stosu klawiatury trzeba odebrać rządanie \verb|IOCTL_INTERNAL_KEYBOARD_CONNECT| i dopisać swoją funkcję.
-            Aby to rządanie w ogóle trafiło do sterownika, mósi on być wpisany nad kbdclass w UpperFilers w \verb|HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e96b-e325-11ce-bfc1-08002be10318}|.
-            Jeśli sterownik będzie pod kbdclass, oczekiwane rządanie nigdy do niego nie dotrze.
+            Aby wpisać swój callback do stosu klawiatury trzeba odebrać żądanie \verb|IOCTL_INTERNAL_KEYBOARD_CONNECT| i dopisać swoją funkcję.
+            Aby to żądanie w ogóle trafiło do sterownika, musi on być wpisany nad kbdclass \ref{sfig:kbdreg_correct} w UpperFilers w \verb|HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e96b-e325-11ce-bfc1-08002be10318}|.
+            Jeśli sterownik będzie pod kbdclass \ref{sfig:kbdreg_wrong}, oczekiwane żądanie nigdy do niego nie dotrze.
             Problem leży w tym, że w pliku .inf podczas edytowania rejestrów nie można wybrać na której pozycji wpisać dodawaną wartość.
             Jedynymi opcjami są 0x00010000 \verb|(FLG_ADDREG_TYPE_MULTI_SZ)|, zastępująca obecną wartość rejestru, oraz 0x00000008 \verb|(FLG_ADDREG_APPEND)|, dopisująca na koniec obecnaj wartości.
+
+            \begin{figure}[H]
+                \centering
+                \hspace*{\fill}
+                \subfloat[\centering Niepoprawna wartość rejestru \label{sfig:kbdreg_wrong}]{\includegraphics[width = 0.4\linewidth]{img/kbdreg_wrong.png}} \hfill
+                \subfloat[\centering Poprawna wartość rejestru \label{sfig:kbdreg_correct}]{\includegraphics[width = 0.4\linewidth]{img/kbdreg_correct.png}}
+                \hspace*{\fill}
+                \caption{Porównanie wartości}
+                \label{fig:kbdreg_values}
+            \end{figure}
 
             Moje rozwiązanie tego problemu jest bardziej obejściem niż rzeczywistym rozwiązaniem.
             Na początku chciałem najpierw usunąć wpis kbdclass z UpperFilters, dopisać na koniec mój sterownik, a następnie dopisać z powrotem kbdclass.
@@ -109,19 +207,19 @@
             Ostatecznie zdecydowałem się zastępować całą obecną wartość moim sterownikiem na początku i kbdclass na końcu.
             Nie jest to rozwiązanie dobre, ponieważ jeśli w wartości były jeszcze inne wpisy, zostaną one usunięte.
         
-        \subsection{Przekazywanie klawiszy między sterownikiem, a aplikacja urzytkownika}
-            W celu przekazywania informacji między sterownikiem, a  aplikacją trybu urzytkownika trzeba stworzyć dowiązanie symboliczne.
+        \subsection{Przekazywanie klawiszy między sterownikiem, a aplikacja użytkownika}
+            W celu przekazywania informacji między sterownikiem, a  aplikacją trybu użytkownika trzeba stworzyć dowiązanie symboliczne.
             Działa to jak plik, do którego informacje mogą zapisywać zarówno aplikacja, jak i sterownik.
-            Problem polegał na tym, że system windows nie pozwolił aplikacji urzytkownika na otworzenie dowiązania symbolicznego stworzonego przez filtr klawiatury.
+            Problem polegał na tym, że system windows nie pozwolił aplikacji użytkownika na otworzenie dowiązania symbolicznego stworzonego przez filtr klawiatury.
             Wywołanie funkcji CreateFile kończyło się błędem 0x5 \verb|ERROR_ACCESS_DENIED|.
 
             Any naprawić ten błąd dodałem do sterownika nowe urządzenie.
-            Jego jedynym zadaniem było odbieranie rządań od aplikacji urzytkownika i odpowiadanie na nie klawiszami z bufora.
+            Jego jedynym zadaniem było odbieranie żądań od aplikacji użytkownika i odpowiadanie na nie klawiszami z bufora.
 
-        \subsection{Dodanie aplikacji trybu urzytkownika do autostartu}
-            Z powodu tego, że zapis do pliku ma miejsce w aplikacji urzytkownika, trzeba ją uruchomić aby sterownik był funkcjonalny poza debugerem.
-            Chciałem dodać aplikację urzytkownika do autostartu dodając wpis w rejestrze za pomocą pliku .inf.
-            Aby to zrobić musiałbym dodać ścierzkę do pliku wykonywalnego aplikacji do rejestru \verb|HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run|.
+        \subsection{Dodanie aplikacji trybu użytkownika do autostartu} \label{sec:autostart_problem}
+            Z powodu tego, że zapis do pliku ma miejsce w aplikacji użytkownika, trzeba ją uruchomić aby sterownik był funkcjonalny poza debugerem.
+            Chciałem dodać aplikację użytkownika do autostartu dodając wpis w rejestrze za pomocą pliku .inf.
+            Aby to zrobić musiałbym dodać ścieżkę do pliku wykonywalnego aplikacji do rejestru \verb|HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run|.
 
             Problemem ponownie okazała się validacja pliku .inf. Plik ten z założenia powinien instalować tylko sterownik. 
             Z tego powodu nie pozwala na edycję niektórych rejestrów.
@@ -131,4 +229,10 @@
             Takie podejście rozwiazało by również problem \ref{sec:UpperFilters_regedit}.
 
     \section{Podsumowanie i wnioski}
+        \begin{itemize}
+            \item Projekt pozwolił na zgłębienie architektury WDF i kluczowych szczegółów wymaganych przy pisaniu sterowników.
+            \item Pisząc sterownik bardzo łatwo coś zepsuć i uniemożliwić korzystanie z komputera(BSOD, wyłączenie klawiatury), dlatego bardzo ważne jest dobre środowisko testowe np. maszyna wirtualna z częstymi migawkami.
+            \item Praca z kodem działającym w DISPATCH\_LEVEL, takim jak np. przerwania z klawiatury, wymaga szczególnego pilnowania co w nim robimy. Nie można w nim usypiać wątku ani wykonywać kosztownych operacji jak np. zapis do pliku.
+        \end{itemize}
+
 \end{document}
