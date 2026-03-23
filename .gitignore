@@ -4,3 +4,4 @@
 sprawozdanie/*
 !sprawozdanie/img/
 !sprawozdanie/*.tex
+!sprawozdanie/*.pdf
